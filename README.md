@@ -12,7 +12,17 @@ calibration, the arm reached any chessboard square just by typing its name (e.g.
 MATLAB app, using the per-square servo table measured on the real arm
 (`matlab/chess/CreateServoInterpolation.m`).
 
-![Arm model over the chessboard (URDF render in MATLAB)](docs/media/arm_render.png)
+![The arm on the bench](docs/media/arm_on_bench_1.jpg)
+
+**Videos** (`docs/media/`):
+- `live_mirroring_1.mp4`, `live_mirroring_2.mp4` - moving the real arm by hand while the MATLAB model follows it from the servo feedback
+- `arm_moving_bench.mp4`, `arm_moving_closeup.mp4`, `arm_control_from_laptop.mp4` - the arm running
+- `assembly_1-3.mp4` - assembling and handling the arm
+- `printing_parts_1-2.mp4` - 3D printing the links
+- `linkedin_reel.mp4` - 40 s highlight cut of the above
+
+MATLAB/URDF model: [`docs/media/arm_render.png`](docs/media/arm_render.png).
+The 14 chessboard photos used for the MATLAB camera calibration are in `vision/calibration/images/`.
 
 Full project history: [`docs/project-summary.md`](docs/project-summary.md)
 
@@ -57,7 +67,7 @@ vision/                   chessboardtracker.py, cameracalibration.py,
                           generate_robot_squares.py, robotic_arm_interface.py
   calibration/            cameraMatrix.csv, distCoeffs.csv, cameraParams.mat, 14 photos
 data/                     robotSquares.mat
-docs/                     project-summary.md, camera-system.md, media/arm_render.png
+docs/                     project-summary.md, camera-system.md, media/ (photos, videos, render)
 tests/                    hardware-free tests (see Testing)
 ```
 

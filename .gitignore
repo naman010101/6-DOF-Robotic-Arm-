@@ -23,3 +23,6 @@ tests/firmware_sim/test_firmware
 .vscode/
 Thumbs.db
 .DS_Store
+
+# raw phone exports (curated copies live in docs/media)
+Photos/
