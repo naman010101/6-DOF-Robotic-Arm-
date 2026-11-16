@@ -30,6 +30,8 @@ that could **pick an object up and place it somewhere else**.
 ![The arm on the bench](docs/media/arm_on_bench_1.jpg)
 
 **Videos** (`docs/media/`):
+- `event_demo_elicit25.mp4` - the arm demoed at the ACM booth at ELICIT'25 (stabilised)
+- `testing_story_hd.mp4` - a test session (Instagram story, cropped and enhanced; `_muted` version without the story audio)
 - `live_mirroring_1.mp4`, `live_mirroring_2.mp4` - moving the real arm by hand while the MATLAB model follows it from the servo feedback
 - `arm_moving_bench.mp4`, `arm_moving_closeup.mp4`, `arm_control_from_laptop.mp4` - the arm running
 - `assembly_1-3.mp4` - assembling and handling the arm
