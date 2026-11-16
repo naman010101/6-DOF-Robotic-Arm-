@@ -7,10 +7,25 @@ from the servos' analog feedback. An Android phone running the IP Webcam app str
 video over Wi-Fi to Python/OpenCV, which is calibrated against the chessboard and maps squares
 (a1-h8, 33 mm) into the arm's workspace for vision-guided positioning.
 
-**Status:** built and tested on the physical arm (summer 2026). After many hours of
-calibration, the arm reached any chessboard square just by typing its name (e.g. `e4`) in the
-MATLAB app, using the per-square servo table measured on the real arm
-(`matlab/chess/CreateServoInterpolation.m`).
+## Why I built it
+Open-source robot arms are expensive, mostly because of their motors and electronics. The goal
+here was a 6-DOF arm built from 3D-printed parts, hobby servos and an ESP32, as cheap as possible,
+that could **pick an object up and place it somewhere else**.
+
+## What worked
+- Built and tested on the physical arm (summer 2026). After many hours of calibration, the arm
+  reached any chessboard square just by typing its name (e.g. `e4`) in the MATLAB app, using a
+  per-square servo table measured on the real arm (`matlab/chess/CreateServoInterpolation.m`).
+- Live mirroring: moving the real arm by hand moves its MATLAB model, driven by the servos'
+  own position feedback (see the videos below).
+- Camera calibration with a phone camera (IP Webcam + OpenCV/MATLAB), 0.57 px reprojection error.
+
+## What didn't, and why
+- **Pick-and-place was not achieved.** Gear backlash in the hobby servos added up across the
+  joints. The arm could reach a square, but not repeatably enough to grip an object and put it
+  down accurately. Per-square calibration worked around it for reaching, not for grasping.
+- The project ran for many days, and I stopped at this point rather than keep tuning around the
+  servos. The main lesson: for a cheap arm, the actuators are the problem to solve first.
 
 ![The arm on the bench](docs/media/arm_on_bench_1.jpg)
 
