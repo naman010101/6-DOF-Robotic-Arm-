@@ -3,8 +3,9 @@
 Six-servo robotic arm. MATLAB models the arm (URDF + `rigidBodyTree`) and solves inverse
 kinematics to turn Cartesian targets or chessboard squares into joint angles. The ESP32
 receives those angles over serial, drives the servos and sends back the measured angles
-from the servos' analog feedback. A calibrated camera maps chessboard squares (a1-h8,
-33 mm squares) into the arm's workspace for vision-guided positioning.
+from the servos' analog feedback. An Android phone running the IP Webcam app streams
+video over Wi-Fi to Python/OpenCV, which is calibrated against the chessboard and maps squares
+(a1-h8, 33 mm) into the arm's workspace for vision-guided positioning.
 
 **Status:** built and tested on the physical arm (summer 2026). After many hours of
 calibration, the arm reached any chessboard square just by typing its name (e.g. `e4`) in the
@@ -27,6 +28,10 @@ Full project history: [`docs/project-summary.md`](docs/project-summary.md)
 | S6 | 18 | Mirrors S2 (`180 - S2`) | none |
 
 Power the servos from an external supply and share ground with the ESP32.
+
+**Camera:** Android phone with the [IP Webcam](https://play.google.com/store/apps/details?id=com.pas.webcam) app,
+on the same Wi-Fi as the PC. The app shows a stream URL such as `http://192.168.5.122:8080/video`;
+the IP changes between networks. Details: [`docs/camera-system.md`](docs/camera-system.md).
 GPIO 12 is a boot-strapping pin: if the ESP32 won't boot, unplug S2's signal wire while powering up.
 
 ## Folder layout
@@ -52,7 +57,7 @@ vision/                   chessboardtracker.py, cameracalibration.py,
                           generate_robot_squares.py, robotic_arm_interface.py
   calibration/            cameraMatrix.csv, distCoeffs.csv, cameraParams.mat, 14 photos
 data/                     robotSquares.mat
-docs/                     project-summary.md, media/arm_render.png
+docs/                     project-summary.md, camera-system.md, media/arm_render.png
 tests/                    hardware-free tests (see Testing)
 ```
 
@@ -74,7 +79,9 @@ the jog buttons, go straight to the target.
 1. Flash `firmware/esp32_main` with PlatformIO (it pulls in `ESP32Servo`).
 2. MATLAB: `run matlab/setup_paths.m`, then `arm_control_app` (the COM port is set at the top of the file, currently COM9).
 3. Python instead of MATLAB: `python vision/robotic_arm_interface.py --port COM9 --angles 90 100 120 80 60` (needs `pyserial`).
-4. Vision: `python vision/chessboardtracker.py --rotate 0`.
+4. Vision: start IP Webcam on the phone, then
+   `python vision/chessboardtracker.py --source http://<phone-ip>:8080/video --rotate 0`
+   (`--source 0` uses a USB webcam, or pass a photo to try it without a camera).
 
 ## Testing (no hardware needed)
 

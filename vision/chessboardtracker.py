@@ -16,7 +16,8 @@ parser.add_argument("--rotate", type=int, default=0,
 )
 
 parser.add_argument("--source", default="http://192.168.5.122:8080/video",
-                    help="Camera: IP-camera URL (default), webcam index such as 0, or an image file.")
+                    help="Camera: phone IP Webcam stream http://<phone-ip>:8080/video (default is the last-used IP), "
+                         "a webcam index such as 0, or an image file.")
 args = parser.parse_args()
 CAM_ROT = args.rotate
 
