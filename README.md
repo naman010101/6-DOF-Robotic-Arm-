@@ -6,6 +6,11 @@ receives those angles over serial, drives the servos and sends back the measured
 from the servos' analog feedback. A calibrated camera maps chessboard squares (a1-h8,
 33 mm squares) into the arm's workspace for vision-guided positioning.
 
+**Status:** built and tested on the physical arm (summer 2026). After many hours of
+calibration, the arm reached any chessboard square just by typing its name (e.g. `e4`) in the
+MATLAB app, using the per-square servo table measured on the real arm
+(`matlab/chess/CreateServoInterpolation.m`).
+
 ![Arm model over the chessboard (URDF render in MATLAB)](docs/media/arm_render.png)
 
 Full project history: [`docs/project-summary.md`](docs/project-summary.md)
@@ -96,10 +101,12 @@ from the old code. For each servo: move it to 0 deg, send `CAL`, note its FB val
 - `matlab/chess/CreateServoInterpolation.m`: square a8 isn't measured, and only files a-d
   are measured. Files e-h are extrapolated; 11 of those values fall outside 0-180 and are
   clamped by the app, so measure e-h before using them.
-- The IK model and the measured servo table disagree (square a1: IK gives `116,120,121,94,90`,
-  the table gives `31,88,25,110,150`). The board placement or the servo zero offsets in
-  `build_robot_model.m` don't match the real arm yet, so use the square dropdown (measured
-  table) on hardware until the IK model is re-checked against it.
+- Square-by-name moves use the hand-calibrated servo table, which is what worked on the
+  real arm. The Cartesian IK model gives different angles for the same squares (square a1:
+  IK `116,120,121,94,90`, table `31,88,25,110,150`), so its board placement / servo zero
+  offsets still need matching to the real arm before X/Y/Z targets are used on hardware.
+- `firmware/esp32_main` was rebuilt from the project notes (the exact firmware used in the
+  summer tests wasn't recovered) and has only been tested in simulation.
 - `build_robot_model.m` is mirrored along X relative to the URDF and its wrist link is
   ~15 mm shorter, so the live view in `moving_physical_arm.m` (URDF) may not match the IK model.
 - Arrival is assumed after a fixed delay, not confirmed from feedback (no closed loop yet).
