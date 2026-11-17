@@ -53,7 +53,7 @@ The planned pipeline, started with one button:
 MATLAB/URDF model: [`docs/media/arm_render.png`](docs/media/arm_render.png).
 The 14 chessboard photos used for the MATLAB camera calibration are in `vision/calibration/images/`.
 
-Full project history: [`docs/project-summary.md`](docs/project-summary.md)
+Full write-up: [`docs/project-report.md`](docs/project-report.md)
 
 ## Simulation: the full pick-and-place, with the chessboard and the camera
 
@@ -97,7 +97,7 @@ Power the servos from an external supply and share ground with the ESP32.
 
 **Camera:** Android phone with the [IP Webcam](https://play.google.com/store/apps/details?id=com.pas.webcam) app,
 on the same Wi-Fi as the PC. The app shows a stream URL such as `http://192.168.5.122:8080/video`;
-the IP changes between networks. Details: [`docs/camera-system.md`](docs/camera-system.md).
+the IP changes between networks.
 GPIO 12 is a boot-strapping pin: if the ESP32 won't boot, unplug S2's signal wire while powering up.
 
 ## Folder layout
@@ -125,7 +125,7 @@ vision/                   chessboardtracker.py, cameracalibration.py,
                           generate_robot_squares.py, robotic_arm_interface.py
   calibration/            cameraMatrix.csv, distCoeffs.csv, cameraParams.mat, 14 photos
 data/                     robotSquares.mat
-docs/                     project-summary.md, camera-system.md, media/ (photos, videos, render)
+docs/                     project-report.md, simulation-plan.md, media/ (photos, videos, render)
 tests/                    hardware-free tests (see Testing)
 ```
 
