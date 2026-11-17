@@ -7,10 +7,17 @@ from the servos' analog feedback. An Android phone running the IP Webcam app str
 video over Wi-Fi to Python/OpenCV, which is calibrated against the chessboard and maps squares
 (a1-h8, 33 mm) into the arm's workspace for vision-guided positioning.
 
+> Built in summer 2026, documented in November 2026: I never wrote it up at the time, so this
+> repository collects the code, CAD, videos and a simulation of what went wrong.
+
 ## Why I built it
 Open-source robot arms are expensive, mostly because of their motors and electronics. The goal
-here was a 6-DOF arm built from 3D-printed parts, hobby servos and an ESP32, as cheap as possible,
-that could **pick an object up and place it somewhere else**.
+here was a 6-DOF arm built from 3D-printed parts, hobby servos (MG995, MG90S) and an ESP32, on a
+budget of under Rs 5,000, that could **pick an object up and place it somewhere else**.
+
+Hobby servos don't report their position, so each servo got a **4th wire** soldered to its
+internal potentiometer. The ESP32 reads those wires on its ADC pins, which is how the arm knows
+where its joints actually are, and what lets the MATLAB model follow the real arm.
 
 The planned pipeline, started with one button:
 1. The phone camera looks at the chessboard and finds which square the object is on.
