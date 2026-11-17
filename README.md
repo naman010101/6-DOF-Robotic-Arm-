@@ -49,6 +49,7 @@ The planned pipeline, started with one button:
 - `assembly_1-3.mp4` - assembling and handling the arm
 - `printing_parts_1-2.mp4` - 3D printing the links
 - `linkedin_reel.mp4` - 40 s highlight cut of the above
+- `sim_pick_and_place_b3.mp4`, `sim_pick_and_place_c3.mp4` - the MATLAB simulation: camera finds the cube, the arm puts it in the box
 
 MATLAB/URDF model: [`docs/media/arm_render.png`](docs/media/arm_render.png).
 The 14 chessboard photos used for the MATLAB camera calibration are in `vision/calibration/images/`.
