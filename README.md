@@ -1,211 +1,156 @@
-# 6-DOF Robotic Arm (ESP32, MATLAB, URDF)
+# Low-cost 6-DOF Robotic Arm
 
-Six-servo robotic arm. MATLAB models the arm (URDF + `rigidBodyTree`) and solves inverse
-kinematics to turn Cartesian targets or chessboard squares into joint angles. The ESP32
-receives those angles over serial, drives the servos and sends back the measured angles
-from the servos' analog feedback. An Android phone running the IP Webcam app streams
-video over Wi-Fi to Python/OpenCV, which is calibrated against the chessboard and maps squares
-(a1-h8, 33 mm) into the arm's workspace for vision-guided positioning.
-
-> Built in summer 2026, documented in November 2026: I never wrote it up at the time, so this
-> repository collects the code, CAD, videos and a simulation of what went wrong.
-
-## Why I built it
-Open-source robot arms are expensive, mostly because of their motors and electronics. The goal
-here was a 6-DOF arm built from 3D-printed parts, hobby servos (MG995, MG90S) and an ESP32, on a
-budget of under Rs 5,000, that could **pick an object up and place it somewhere else**.
-
-Hobby servos don't report their position, so each servo got a **4th wire** soldered to its
-internal potentiometer. The ESP32 reads those wires on its ADC pins, which is how the arm knows
-where its joints actually are, and what lets the MATLAB model follow the real arm.
-
-The planned pipeline, started with one button:
-1. The phone camera looks at the chessboard and finds which square the object is on.
-2. The arm moves to that square and grips the object.
-3. It carries it to a small box next to the board and releases it.
-
-## What worked
-- Built and tested on the physical arm (summer 2026). After many hours of calibration, the arm
-  reached any chessboard square just by typing its name (e.g. `e4`) in the MATLAB app, using a
-  per-square servo table measured on the real arm (`matlab/chess/CreateServoInterpolation.m`).
-- Live mirroring: moving the real arm by hand moves its MATLAB model, driven by the servos'
-  own position feedback (see the videos below).
-- Camera calibration with a phone camera (IP Webcam + OpenCV/MATLAB), 0.57 px reprojection error.
-
-## What didn't, and why
-- **Pick-and-place was not achieved.** Gear backlash in the hobby servos added up across the
-  joints. The arm could reach a square, but not repeatably enough to grip an object and put it
-  down accurately. Per-square calibration worked around it for reaching, not for grasping.
-- The project ran for many days, and I stopped at this point rather than keep tuning around the
-  servos. The main lesson: for a cheap arm, the actuators are the problem to solve first.
+A 6-DOF robot arm I built over my summer vacation for under ₹5,000, using 3D-printed parts,
+hobby servos (MG995 / MG90S), an ESP32 and my phone as the camera. I never documented it
+properly back then, so this repo is me finally putting everything in one place: the CAD,
+firmware, MATLAB code, videos, and a simulation I made afterwards to figure out what went wrong.
 
 ![The arm on the bench](docs/media/arm_on_bench_1.jpg)
 
-**Videos** (`docs/media/`):
-- `event_demo_elicit25.mp4` - the arm demoed at the ACM booth at ELICIT'25 (stabilised)
-- `testing_story_hd.mp4` - a test session (Instagram story, cropped and enhanced; `_muted` version without the story audio)
-- `live_mirroring_1.mp4`, `live_mirroring_2.mp4` - moving the real arm by hand while the MATLAB model follows it from the servo feedback
-- `arm_moving_bench.mp4`, `arm_moving_closeup.mp4`, `arm_control_from_laptop.mp4` - the arm running
-- `assembly_1-3.mp4` - assembling and handling the arm
-- `printing_parts_1-2.mp4` - 3D printing the links
-- `linkedin_reel.mp4` - 40 s highlight cut of the above
-- `sim_pick_and_place_b3.mp4`, `sim_pick_and_place_c3.mp4` - the MATLAB simulation: camera finds the cube, the arm puts it in the box
+## The idea
 
-MATLAB/URDF model: [`docs/media/arm_render.png`](docs/media/arm_render.png).
-The 14 chessboard photos used for the MATLAB camera calibration are in `vision/calibration/images/`.
+Open-source arms are cool but expensive, mostly because of the motors and electronics. I wanted
+to see how cheap I could go and still do something real:
 
-Full write-up: [`docs/project-report.md`](docs/project-report.md)
+1. the phone camera looks at a chessboard and finds which square an object is on
+2. the arm goes there and picks it up
+3. it drops it into a small box next to the board
 
-## Simulation: the full pick-and-place, with the chessboard and the camera
+All from one button.
 
-`matlab/simulation/pick_and_place_sim.m` runs the task the arm was built for, end to end, in
-MATLAB: the phone camera (real calibration and lens distortion) sees the board, vision finds which
-square the cube is on, IK plans a collision-free path, and the arm carries the cube to the box.
+## What I built
+
+- **The arm** - designed in Fusion 360, 3D printed, driven by an ESP32. MATLAB sends joint angles
+  over serial and the ESP32 moves the servos.
+- **Servo feedback** - cheap servos don't tell you where they are, so I soldered a 4th wire to
+  the potentiometer inside each one and read it on the ESP32's analog pins. That's how the arm
+  knows its real joint angles.
+- **Live mirroring** - the ESP32 sends those angles back every 200 ms, so if I move the arm by hand
+  the MATLAB model moves with it. It works the other way too: jog buttons, a target point or a
+  square name in the MATLAB app move the real arm.
+- **Square by name** - I calibrated the arm square by square on the chessboard (this took a lot of
+  hours). Type `e4` and it goes to e4.
+- **Camera** - my Android phone running IP Webcam, streamed over Wi-Fi and calibrated in MATLAB
+  from 14 photos of the chessboard (0.57 px reprojection error).
+
+## What didn't work
+
+Pick-and-place, which was the whole point. The servos have gear backlash, and across six joints
+it adds up. The arm could reach a square, but not accurately enough to actually grab something
+and put it down. Calibrating every square got me reaching, not grasping. After many days of
+tuning I stopped there.
+
+Honestly I wasn't happy with that. But I'm still proud of the arm itself, and going back to it
+later taught me something useful (next section).
+
+## The simulation (what went wrong, and a fix)
+
+In November I simulated the whole task in MATLAB: the arm (from its URDF), the chessboard, the box,
+and the phone camera with its real calibration and lens distortion.
 
 ```matlab
-addpath(genpath("matlab"))
-pick_and_place_sim("b3", Video="pick_b3.mp4")
+startup                                   % adds the code to the path (runs automatically in this folder)
+pick_and_place_sim("c3", Video="c3.mp4")  % camera finds the cube on c3, arm puts it in the box
 ```
 
 ![Simulation results](docs/media/sim_results.png)
 
-- **Vision:** correct square for 64/64 positions, median error 0.58 mm.
-- **Reach:** 38/64 squares can be picked with the gripper pointing down: files a-d and most of e,
-  which is exactly the half of the board the real arm was calibrated on.
-- **Planning:** all 38 get a collision-free pick -> box -> release plan
-  ([video](docs/media/sim_pick_and_place_b3.mp4)).
-- **Why the real arm missed:** with typical hobby-servo backlash, only 12 % of grasps land inside
-  the 4.5 mm jaw clearance when a joint can arrive from either side (the old firmware). Making
-  every joint finish its move from the same side raises that to 99 %. This is now built into
-  the firmware (`ANTI_BACKLASH`).
+What it showed:
 
-Plan, iterations and limits: [`docs/simulation-plan.md`](docs/simulation-plan.md).
-Full write-up: [`docs/project-report.md`](docs/project-report.md).
+- the camera finds the right square every time (64/64, median error 0.58 mm)
+- the arm can only pick from about half the board (files a-d and most of e) - which is exactly the
+  half I had managed to calibrate on the real arm
+- every reachable square gets a collision-free pick -> box path
+- the real problem is backlash: if a joint can arrive from either side of its gear slack, only
+  **12%** of simulated grasps land inside the gripper. If every joint always finishes its move
+  from the same side, the slack becomes a fixed offset and that jumps to **99%**
 
-## Hardware (ESP32 DevKit V1)
+So backlash doesn't have to be removed, just made predictable. I added that to the firmware
+(`ANTI_BACKLASH`: downward moves overshoot by 4° and come back up). It still has to be tested on
+the real arm.
 
-| Servo | GPIO | Joint | Feedback GPIO |
+The simulation also caught a mistake in my URDF: the base rotation axis was 50 mm off the centre
+of the base (from the Fusion export). Fixed now.
+
+More detail: [project report](docs/project-report.md) and [simulation notes](docs/simulation-plan.md).
+
+## Videos
+
+All in `docs/media/`:
+
+- `testing_story_hd.mp4` - a test session (`_muted` has no audio)
+- `event_demo_elicit25.mp4` - running at the ACM booth at ELICIT'25
+- `live_mirroring_1.mp4`, `live_mirroring_2.mp4` - moving the arm by hand, MATLAB model follows
+- `arm_moving_bench.mp4`, `arm_moving_closeup.mp4`, `arm_control_from_laptop.mp4` - the arm running
+- `assembly_1-3.mp4`, `printing_parts_1-2.mp4` - building it
+- `sim_pick_and_place_b3.mp4`, `sim_pick_and_place_c3.mp4` - the simulation
+- `linkedin_reel.mp4` - a short highlight cut
+
+## Wiring (ESP32 DevKit V1)
+
+| Servo | GPIO | Joint | Feedback pin |
 |---|---|---|---|
-| S1 | 13 | Base | 33 |
-| S2 | 12 | Shoulder | 32 |
-| S3 | 14 | Elbow (mounted inverted) | 35 |
-| S4 | 25 | Wrist | 36 |
-| S5 | 27 | Wrist | 34 |
-| S6 | 18 | Mirrors S2 (`180 - S2`) | none |
-| Gripper | 26 (check your wiring) | SG90-type geared gripper | none |
+| S1 | 13 | base | 33 |
+| S2 | 12 | shoulder | 32 |
+| S3 | 14 | elbow (mounted inverted) | 35 |
+| S4 | 25 | wrist | 36 |
+| S5 | 27 | wrist | 34 |
+| S6 | 18 | second shoulder servo, mirrors S2 (`180 - S2`) | - |
+| Gripper | 26 | SG90-type gripper | - |
 
-Power the servos from an external supply and share ground with the ESP32.
+Power the servos from a separate supply and connect its ground to the ESP32.
+GPIO 12 is a boot pin - if the ESP32 won't boot, unplug S2's signal wire while powering it up.
 
-**Camera:** Android phone with the [IP Webcam](https://play.google.com/store/apps/details?id=com.pas.webcam) app,
-on the same Wi-Fi as the PC. The app shows a stream URL such as `http://192.168.5.122:8080/video`;
-the IP changes between networks.
-GPIO 12 is a boot-strapping pin: if the ESP32 won't boot, unplug S2's signal wire while powering up.
+## Serial commands (115200 baud)
 
-## Folder layout
+| Send | What it does |
+|---|---|
+| `s1,s2,s3,s4,s5` | move the five joints (0-180) |
+| `s1,s2,s3,s4,s5,g` | same, then set the gripper once the arm gets there |
+| `OPEN` / `CLOSE` / `GRIP <angle>` | gripper |
+| `HOME` | go to the home pose |
+| `CAL` | print the raw feedback readings (for calibrating) |
+
+The ESP32 sends back `f1,...,f6` (measured angles) every 200 ms, plus status lines starting with
+`#`. Joints move wrist first, base last, and big moves go through HOME first.
+
+## Running it
+
+1. Flash `firmware/esp32_main` with PlatformIO.
+2. Open MATLAB in this folder and run `arm_control_app` (COM port is set at the top, COM9 for me).
+3. Pick a square and press **Pick Square -> Box**, or use the jog buttons.
+4. No MATLAB? `python vision/robotic_arm_interface.py --port COM9 --angles 90 100 120 80 60`
+5. Camera: start IP Webcam on the phone, then
+   `python vision/chessboardtracker.py --source http://<phone-ip>:8080/video`
+
+## Folders
 
 ```
-cad/                      Fusion 360 exports: full assembly (.step, .stl) and per-part STLs
-urdf/                     ROS package: urdf/robot.urdf, xacro, STL meshes, launch files
-matlab/
-  setup_paths.m           run first: adds all matlab/ subfolders to the path
-  kinematics/             build_robot_model.m (model used for IK), solve_ik_dls.m (IK solver),
-                          joints_to_servo.m, robot_model.m (earlier exploratory model)
-  chess/                  board <-> robot coordinates, per-square servo table
-  hardware/               arm_control_app.m (GUI: IK + send to ESP32),
-                          moving_physical_arm.m (live view from ESP32 feedback),
-                          esp32_communication.m (serial connection snippet)
-  simulation/             pick_and_place_sim.m (one-button simulation) and its sim_*.m parts:
-                          scene, camera render, vision, IK, planner, animation, backlash study;
-                          collision_check.m (self/ground collision test)
-firmware/
-  esp32_main/             CURRENT firmware - flash this
-  tests/esp32_servo_sweep single-servo sweep on GPIO 18
-  archive/                esp32_stepper_j1_attempt (abandoned stepper base),
-                          uno_3dof_ik_prototype (early Arduino UNO 3-servo IK version)
-vision/                   chessboardtracker.py, cameracalibration.py,
-                          generate_robot_squares.py, robotic_arm_interface.py
-  calibration/            cameraMatrix.csv, distCoeffs.csv, cameraParams.mat, 14 photos
-data/                     robotSquares.mat
-docs/                     project-report.md, simulation-plan.md, media/ (photos, videos, render)
-tests/                    hardware-free tests (see Testing)
+cad/          Fusion 360 exports (full assembly STEP/STL + each part)
+urdf/         URDF, meshes and ROS launch files
+matlab/       kinematics, chessboard calibration table, the control app, the simulation
+firmware/     esp32_main (current), a servo test, and old versions (stepper base attempt, UNO prototype)
+vision/       camera calibration, chessboard tracker, Python serial interface
+docs/         project report, simulation notes, photos and videos
+tests/        tests that run without the arm (MATLAB, firmware on a PC, camera calibration)
 ```
 
-## Serial protocol (115200 baud, one line per command)
+## Tests
 
-| Direction | Line | Meaning |
-|---|---|---|
-| PC -> ESP32 | `s1,s2,s3,s4,s5` | Five joint angles 0-180 in MATLAB's frame (what `arm_control_app.m` sends) |
-| PC -> ESP32 | `s1,s2,s3,s4,s5,g` | Same, then set the gripper to `g` once the arm has arrived |
-| PC -> ESP32 | `OPEN` / `CLOSE` | Open / close the gripper (`GRIP OPEN`, `GRIP CLOSE` also work) |
-| PC -> ESP32 | `GRIP <0-180>` | Set the gripper to an angle (use it to find the open/closed values) |
-| PC -> ESP32 | `HOME` | Move to the home pose |
-| PC -> ESP32 | `CAL` | Print raw ADC values of FB1-FB5 |
-| ESP32 -> PC | `f1,f2,f3,f4,f5,f6` | Measured angles in the same frame, every 200 ms and after each move (f6 = commanded S6) |
-| ESP32 -> PC | `# GRIP <angle>` | Gripper position after every gripper command |
-| ESP32 -> PC | `# ...` | Status / errors |
+Everything that can run without the arm passes: 20/20 MATLAB tests, 53/53 firmware checks (run
+on a PC with fake Arduino headers), an end-to-end test of the Python interface against a simulated
+ESP32, and the camera calibration check. See `tests/`.
 
-Every joint finishes its move travelling upward (`ANTI_BACKLASH`, 4 deg overshoot on downward
-moves), so gear backlash always sits on the same side. The firmware moves the joints wrist to base (S5, S4, S3, S2 with S6, then S1). If any joint
-has to move more than 30 deg, it goes to HOME first (A1 -> HOME -> B1). Small moves, such as
-the jog buttons, go straight to the target.
+## Still to do
 
-## Running
-1. Flash `firmware/esp32_main` with PlatformIO (it pulls in `ESP32Servo`).
-2. MATLAB: `run matlab/setup_paths.m`, then `arm_control_app` (the COM port is set at the top of the file, currently COM9).
-3. Pick and place: pick a square in the app and press **Pick Square -> Box**
-   (`matlab/hardware/pick_and_place.m`: open, go to the square, close, lift, go to the box, open, home).
-   Set `boxPose` at the top of `arm_control_app.m` to the servo angles above your box first.
-4. Python instead of MATLAB: `python vision/robotic_arm_interface.py --port COM9 --angles 90 100 120 80 60` (needs `pyserial`).
-5. Vision: start IP Webcam on the phone, then
-   `python vision/chessboardtracker.py --source http://<phone-ip>:8080/video --rotate 0`
-   (`--source 0` uses a USB webcam, or pass a photo to try it without a camera).
+- flash the new firmware and set the gripper angles and box position
+- re-measure the square table (the anti-backlash moves change where joints settle)
+- calibrate the feedback readings with `CAL` (the values in the code are placeholders)
+- run the camera detection on the real phone feed instead of picking the square by hand
+- switch the app's IK to the URDF model (the old hand-written model doesn't match the arm)
 
-## Testing (no hardware needed)
-
-| What | How to run | Last result |
-|---|---|---|
-| MATLAB: URDF + meshes, IK, chess squares, servo table, scripts run headless | `run_tests` in `tests/matlab` (several minutes) | 15/15 pass (IK on random reachable poses: 11/12 within 1 mm) |
-| Pick-and-place sequence and the app's buttons, against a fake ESP32 | part of the MATLAB tests | pass |
-| Pick-and-place simulation: vision, reach, collision-free plan, backlash strategies | part of the MATLAB tests | pass |
-| IK reaches every chess square | part of the MATLAB tests | 64/64 at board level (worst 0.10 mm) and 30 mm above (worst 0.72 mm) |
-| Firmware logic on a PC (order, S3 inversion, S6 mirror, HOME-first, clamping, bad packets, feedback) | `cd tests/firmware_sim && g++ -std=gnu++17 -Istub test_firmware.cpp -o test_firmware && ./test_firmware` | 47/47 checks (incl. gripper) |
-| Every packet MATLAB sends is accepted by the firmware | `export_packets` in MATLAB, then the firmware test above | 128/128 |
-| Python interface <-> simulated ESP32 over a virtual serial port, incl. a full pick-and-place (Linux/WSL) | `g++ -std=gnu++17 -Istub sim_main.cpp -o sim_firmware && python3 test_end_to_end.py ./sim_firmware` | pass |
-| Camera calibration against the 14 photos | `python tests/vision/test_calibration.py` | 0.57 px mean reprojection error (9/14 boards detected) |
-
-Not covered without hardware: real servo motion and timing, real ADC feedback, and the
-interactive parts of `chessboardtracker.py` and `arm_control_app.m` (mouse clicks / GUI).
-
-## Calibrating the feedback (do this first)
-`adcAt0` / `adcAt180` in `firmware/esp32_main/src/main.cpp` are still the placeholder values
-from the old code. For each servo: move it to 0 deg, send `CAL`, note its FB value; repeat at
-180 deg; then put both numbers into the arrays and re-flash.
-
-## Still open
-- **Re-measure the square table with the new firmware.** The anti-backlash approach shifts where
-  each joint settles, so the old hand-measured angles will be off by roughly the backlash.
-- Gripper: the pin (GPIO 26), `GRIPPER_OPEN`/`GRIPPER_CLOSED` in the firmware and `boxPose`
-  in the app are placeholders - check the wiring and measure them with `GRIP <angle>` and the jog buttons.
-- Camera -> square -> pick is connected in the simulation (`pick_and_place_sim.m`), but not yet
-  on the real arm: the app still uses a square picked by hand. Porting it means running
-  `sim_detect_object.m` on the live phone image (with a green sticker on the board frame).
-- The URDF gripper is one rigid part, so the simulation doesn't show the fingers opening.
-- Feedback calibration values (above) and the HOME pose (all 90 deg) are unverified.
-- S6 has no feedback channel.
-- `matlab/chess/CreateServoInterpolation.m`: square a8 isn't measured, and only files a-d
-  are measured. Files e-h are extrapolated (11 values fall outside 0-180 and are clamped).
-  The simulation shows f-h are out of reach with the gripper pointing down anyway, so the
-  usable workspace is files a-d (and most of e).
-- Square-by-name moves use the hand-calibrated servo table, which is what worked on the
-  real arm. The Cartesian IK model gives different angles for the same squares (square a1:
-  IK `116,120,121,94,90`, table `31,88,25,110,150`), so its board placement / servo zero
-  offsets still need matching to the real arm before X/Y/Z targets are used on hardware.
-- `firmware/esp32_main` was rebuilt from the project notes (the exact firmware used in the
-  summer tests wasn't recovered) and has only been tested in simulation.
-- `build_robot_model.m` (the app's IK model) is mirrored along X relative to the URDF and its
-  wrist link is ~15 mm shorter. The URDF is the better model (it is used by the simulation and
-  had its base axis corrected), so the app's IK should eventually move to the URDF too.
-- Arrival is assumed after a fixed delay, not confirmed from feedback (no closed loop yet).
+The firmware here is a rebuild - I couldn't find the exact version I used in the summer.
 
 ## License
-MIT - see [LICENSE](LICENSE).
+
+MIT
