@@ -1,7 +1,5 @@
 function robot = build_robot_model()
-clc
-clear
-close all
+% (clc/clear/close all removed: inside a function they closed the caller's figures)
 
 robot = rigidBodyTree("DataFormat","row","MaxNumBodies",6);
 

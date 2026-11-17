@@ -83,9 +83,15 @@ int main() {
   {
     send("30,120,150,60,170");
     auto w = writes();
-    // first block of writes must be HOME values
-    bool homeFirst = !w.empty() && w[0].angle == HOME_POSE[w[0].joint];
-    CHECK(homeFirst, "first write is a HOME angle");
+    // every joint must be at HOME (already there, or written to HOME) before its final target
+    bool homeFirst = true; int homeWrites = 0;
+    for (int j = 0; j < 6; j++) {
+      int firstHome = -1, last = -1;
+      for (size_t k = 0; k < w.size(); k++) if (w[k].joint == j) { if (firstHome < 0 && w[k].angle == HOME_POSE[j]) firstHome = (int)k; last = (int)k; }
+      if (firstHome >= 0) homeWrites++;
+      if (firstHome >= 0 && firstHome >= last) homeFirst = false;
+    }
+    CHECK(homeFirst && homeWrites > 0, "joints go to HOME before their targets");
     int target[6] = {30, 120, 30, 60, 170, 60};
     for (int j = 0; j < 6; j++) {
       int last = -1; for (auto &x : w) if (x.joint == j) last = x.angle;
@@ -128,6 +134,26 @@ int main() {
   {
     send("cal");
     CHECK(has(output(), "# RAW FB1="), "raw line");
+  }
+
+  printf("[11] anti-backlash: downward moves overshoot and come back up, upward moves go straight\n");
+  {
+    send("HOME");
+    send("90,90,90,90,80");                       // S5 down by 10
+    auto w = writes();
+    std::vector<int> s5; for (auto &x : w) if (x.joint == 4) s5.push_back(x.angle);
+    CHECK((s5 == std::vector<int>{80 - OVERSHOOT_DEG, 80}), "S5 down: overshoot then target");
+    send("90,90,90,90,85");                       // S5 up by 5
+    s5.clear(); for (auto &x : writes()) if (x.joint == 4) s5.push_back(x.angle);
+    CHECK((s5 == std::vector<int>{85}), "S5 up: straight to target");
+    send("90,80,90,90,85");                       // shoulder down: S2 and its mirror S6 overshoot together
+    std::vector<int> s2, s6; for (auto &x : writes()) { if (x.joint == 1) s2.push_back(x.angle); if (x.joint == 5) s6.push_back(x.angle); }
+    CHECK((s2 == std::vector<int>{80 - OVERSHOOT_DEG, 80}), "S2 down: overshoot then target");
+    CHECK((s6 == std::vector<int>{100 + OVERSHOOT_DEG, 100}), "S6 mirrors both steps");
+    send("90,80,2,90,85");                        // S3 servo = 178 -> up, no overshoot
+    send("90,80,178,90,85");                      // S3 servo = 2 -> down, overshoot clamped at 0
+    std::vector<int> s3; for (auto &x : writes()) if (x.joint == 2) s3.push_back(x.angle);
+    CHECK(s3.size() >= 2 && s3[s3.size()-2] == 0 && s3.back() == 2, "overshoot clamped at 0");
   }
 
   printf("[10] gripper: OPEN / CLOSE / GRIP <angle> / clamping / 6-value packet\n");

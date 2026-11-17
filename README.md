@@ -48,6 +48,32 @@ The 14 chessboard photos used for the MATLAB camera calibration are in `vision/c
 
 Full project history: [`docs/project-summary.md`](docs/project-summary.md)
 
+## Simulation: the full pick-and-place, with the chessboard and the camera
+
+`matlab/simulation/pick_and_place_sim.m` runs the task the arm was built for, end to end, in
+MATLAB: the phone camera (real calibration and lens distortion) sees the board, vision finds which
+square the cube is on, IK plans a collision-free path, and the arm carries the cube to the box.
+
+```matlab
+addpath(genpath("matlab"))
+pick_and_place_sim("b3", Video="pick_b3.mp4")
+```
+
+![Simulation results](docs/media/sim_results.png)
+
+- **Vision:** correct square for 64/64 positions, median error 0.58 mm.
+- **Reach:** 38/64 squares can be picked with the gripper pointing down: files a-d and most of e,
+  which is exactly the half of the board the real arm was calibrated on.
+- **Planning:** all 38 get a collision-free pick -> box -> release plan
+  ([video](docs/media/sim_pick_and_place_b3.mp4)).
+- **Why the real arm missed:** with typical hobby-servo backlash, only 12 % of grasps land inside
+  the 4.5 mm jaw clearance when a joint can arrive from either side (the old firmware). Making
+  every joint finish its move from the same side raises that to 99 %. This is now built into
+  the firmware (`ANTI_BACKLASH`).
+
+Plan, iterations and limits: [`docs/simulation-plan.md`](docs/simulation-plan.md).
+Full write-up: [`docs/project-report.md`](docs/project-report.md).
+
 ## Hardware (ESP32 DevKit V1)
 
 | Servo | GPIO | Joint | Feedback GPIO |
@@ -80,7 +106,9 @@ matlab/
   hardware/               arm_control_app.m (GUI: IK + send to ESP32),
                           moving_physical_arm.m (live view from ESP32 feedback),
                           esp32_communication.m (serial connection snippet)
-  simulation/             collision_check.m (self/ground collision test)
+  simulation/             pick_and_place_sim.m (one-button simulation) and its sim_*.m parts:
+                          scene, camera render, vision, IK, planner, animation, backlash study;
+                          collision_check.m (self/ground collision test)
 firmware/
   esp32_main/             CURRENT firmware - flash this
   tests/esp32_servo_sweep single-servo sweep on GPIO 18
@@ -108,7 +136,8 @@ tests/                    hardware-free tests (see Testing)
 | ESP32 -> PC | `# GRIP <angle>` | Gripper position after every gripper command |
 | ESP32 -> PC | `# ...` | Status / errors |
 
-The firmware moves the joints wrist to base (S5, S4, S3, S2 with S6, then S1). If any joint
+Every joint finishes its move travelling upward (`ANTI_BACKLASH`, 4 deg overshoot on downward
+moves), so gear backlash always sits on the same side. The firmware moves the joints wrist to base (S5, S4, S3, S2 with S6, then S1). If any joint
 has to move more than 30 deg, it goes to HOME first (A1 -> HOME -> B1). Small moves, such as
 the jog buttons, go straight to the target.
 
@@ -129,6 +158,7 @@ the jog buttons, go straight to the target.
 |---|---|---|
 | MATLAB: URDF + meshes, IK, chess squares, servo table, scripts run headless | `run_tests` in `tests/matlab` (several minutes) | 15/15 pass (IK on random reachable poses: 11/12 within 1 mm) |
 | Pick-and-place sequence and the app's buttons, against a fake ESP32 | part of the MATLAB tests | pass |
+| Pick-and-place simulation: vision, reach, collision-free plan, backlash strategies | part of the MATLAB tests | pass |
 | IK reaches every chess square | part of the MATLAB tests | 64/64 at board level (worst 0.10 mm) and 30 mm above (worst 0.72 mm) |
 | Firmware logic on a PC (order, S3 inversion, S6 mirror, HOME-first, clamping, bad packets, feedback) | `cd tests/firmware_sim && g++ -std=gnu++17 -Istub test_firmware.cpp -o test_firmware && ./test_firmware` | 47/47 checks (incl. gripper) |
 | Every packet MATLAB sends is accepted by the firmware | `export_packets` in MATLAB, then the firmware test above | 128/128 |
@@ -144,22 +174,30 @@ from the old code. For each servo: move it to 0 deg, send `CAL`, note its FB val
 180 deg; then put both numbers into the arrays and re-flash.
 
 ## Still open
+- **Re-measure the square table with the new firmware.** The anti-backlash approach shifts where
+  each joint settles, so the old hand-measured angles will be off by roughly the backlash.
 - Gripper: the pin (GPIO 26), `GRIPPER_OPEN`/`GRIPPER_CLOSED` in the firmware and `boxPose`
   in the app are placeholders - check the wiring and measure them with `GRIP <angle>` and the jog buttons.
-- The camera step (find which square the object is on) isn't connected to pick-and-place yet;
-  the square is chosen by hand in the app.
+- Camera -> square -> pick is connected in the simulation (`pick_and_place_sim.m`), but not yet
+  on the real arm: the app still uses a square picked by hand. Porting it means running
+  `sim_detect_object.m` on the live phone image (with a green sticker on the board frame).
 - The URDF gripper is one rigid part, so the simulation doesn't show the fingers opening.
 - Feedback calibration values (above) and the HOME pose (all 90 deg) are unverified.
 - S6 has no feedback channel.
 - `matlab/chess/CreateServoInterpolation.m`: square a8 isn't measured, and only files a-d
-  are measured. Files e-h are extrapolated; 11 of those values fall outside 0-180 and are
-  clamped by the app, so measure e-h before using them.
+  are measured. Files e-h are extrapolated (11 values fall outside 0-180 and are clamped).
+  The simulation shows f-h are out of reach with the gripper pointing down anyway, so the
+  usable workspace is files a-d (and most of e).
 - Square-by-name moves use the hand-calibrated servo table, which is what worked on the
   real arm. The Cartesian IK model gives different angles for the same squares (square a1:
   IK `116,120,121,94,90`, table `31,88,25,110,150`), so its board placement / servo zero
   offsets still need matching to the real arm before X/Y/Z targets are used on hardware.
 - `firmware/esp32_main` was rebuilt from the project notes (the exact firmware used in the
   summer tests wasn't recovered) and has only been tested in simulation.
-- `build_robot_model.m` is mirrored along X relative to the URDF and its wrist link is
-  ~15 mm shorter, so the live view in `moving_physical_arm.m` (URDF) may not match the IK model.
+- `build_robot_model.m` (the app's IK model) is mirrored along X relative to the URDF and its
+  wrist link is ~15 mm shorter. The URDF is the better model (it is used by the simulation and
+  had its base axis corrected), so the app's IK should eventually move to the URDF too.
 - Arrival is assumed after a fixed delay, not confirmed from feedback (no closed loop yet).
+
+## License
+MIT - see [LICENSE](LICENSE).

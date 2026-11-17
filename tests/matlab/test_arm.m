@@ -56,20 +56,24 @@ tc.verifyGreaterThanOrEqual(mean(err < 1e-3), 0.5, "at least half of random reac
 end
 
 function testIkReachesEveryChessSquare(tc)
+chessIk(tc, 0, "on the board");
+end
+
+function testIkReachesEveryChessSquareFromAbove(tc)
+chessIk(tc, 0.03, "30 mm above the board (approach height)");
+end
+
+function chessIk(tc, hover, label)
 r = tc.TestData.robot;
 Sq = CreateChessBoard();
 names = string(fieldnames(Sq));
-hover = 0.03;  % 3 cm above the board (approach height)
-err = zeros(numel(names), 2);
+err = zeros(numel(names), 1);
 for i = 1:numel(names)
-    p = Sq.(names(i));
-    [~, err(i,1)] = solve_ik_dls(r, p, appSeed(r), "tool0");
-    [~, err(i,2)] = solve_ik_dls(r, p + [0 0 hover], appSeed(r), "tool0");
+    [~, err(i)] = solve_ik_dls(r, Sq.(names(i)) + [0 0 hover], appSeed(r), "tool0");
 end
-bad = names(any(err > 2e-3, 2));
+bad = names(err > 2e-3);
 badTxt = "none"; if ~isempty(bad), badTxt = strjoin(bad, " "); end
-report("IK chess squares: worst %.2f mm on board, %.2f mm at hover; >2 mm: %s\n", ...
-    1000*max(err(:,1)), 1000*max(err(:,2)), badTxt);
+report("IK chess squares %s: worst %.2f mm; >2 mm: %s\n", label, 1000*max(err), badTxt);
 tc.verifyEmpty(bad, "squares the IK cannot reach within 2 mm");
 end
 
@@ -169,6 +173,51 @@ for t = ["Open Gripper" "Close Gripper" "Pick Square -> Box" "Load Square" "Solv
 end
 end
 
+% ---------------------------------------------------------------- pick-and-place simulation
+function testSimVisionFindsSquares(tc)
+warning("off", "vision:calibrate:boardShouldBeAsymmetric");
+for sq = ["a1" "d8" "b3" "h5"]
+    S = sim_build_scene(Square=sq);
+    det = sim_detect_object(S, sim_render_camera(S, Seed=7));
+    tc.verifyEqual(det.square, sq, "camera found the wrong square");
+    tc.verifyLessThan(norm(det.world(1:2) - S.cubeStart(1:2)), 0.003, "position error over 3 mm on " + sq);
+end
+end
+
+function testSimReachMatchesMeasuredHalf(tc)
+% pickable = fingertip can reach the cube AND the approach point 60 mm above it
+S = sim_build_scene();
+pickable = @(sq) pickOk(S, sq);
+for sq = ["a1" "a8" "d1" "d8" "c5"]      % the half the real arm was calibrated on
+    tc.verifyTrue(pickable(sq), sq + " should be pickable");
+end
+for sq = ["g4" "h1" "h8"]
+    tc.verifyFalse(pickable(sq), sq + " should be out of reach");
+end
+end
+
+function ok = pickOk(S, sq)
+p = sim_square_to_world(S, sq) + [0 0 S.cubeSize/2];
+[q, ok1] = sim_solve_pose(S, p);
+[~, ok2] = sim_solve_pose(S, p + [0 0 0.06], q);
+ok = ok1 && ok2;
+end
+
+function testSimPlanIsCollisionFree(tc)
+S = sim_build_scene(Square="b3");
+plan = sim_plan_pick_place(S, S.cubeStart);
+tc.verifyTrue(plan.ok, strjoin(plan.messages, "; "));
+tc.verifyEqual(plan.nCollisions, 0);
+tc.verifyEqual(plan.waypoints, ["home" "above cube" "grasp" "lift" "above box" "release" "retreat" "home"]);
+end
+
+function testSimBacklashStrategies(tc)
+S = sim_build_scene();
+R = sim_backlash_study(S, ["b3" "c6"], Trials=150, Seed=3);
+tc.verifyLessThan(mean(R.success(:,1)), 0.5, "uncompensated backlash should usually miss");
+tc.verifyGreaterThan(mean(R.success(:,2)), 0.9, "same-direction approach should usually grasp");
+end
+
 % ---------------------------------------------------------------- helpers
 function q = appSeed(robot)
 % same starting guess arm_control_app uses for its first solve
@@ -176,7 +225,7 @@ q = homeConfiguration(robot);
 q(2) = deg2rad(-20); q(3) = deg2rad(30); q(4) = deg2rad(10);
 end
 
-function out = runScript(file)
+function out = runScript(file) %#ok<INUSD> (used inside the evalc string)
 % scripts call clc/clear, so run them in this function's own workspace
 out = evalc("run(file)");
 end
