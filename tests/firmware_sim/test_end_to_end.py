@@ -44,6 +44,25 @@ try:
         sent = arm.send_angles(-30, 400, 90, 90, 90)
         check(sent == [0, 180, 90, 90, 90], f"Python clamps before sending: {sent}")
 
+        arm.grip_close()
+        line = arm.wait_for("# GRIP", timeout=3)
+        check(line == "# GRIP 110", f"CLOSE -> {line}")
+        arm.grip(75)
+        line = arm.wait_for("# GRIP", timeout=3)
+        check(line == "# GRIP 75", f"GRIP 75 -> {line}")
+
+        # full pick-and-place: square a1 from the measured table -> a box pose
+        log = []
+        orig = arm.wait_for
+        arm.wait_for = lambda prefix, timeout=10.0: log.append(orig(prefix, timeout)) or log[-1]
+        arm.pick_and_place([31, 88, 25, 110, 150], [150, 70, 60, 120, 90])
+        arm.wait_for = orig
+        expect = ["# GRIP 40", "# OK 31,88,25,110,150", "# GRIP 110", "# HOME reached",
+                  "# OK 150,70,60,120,90", "# GRIP 40", "# HOME reached"]
+        check(log == expect, "pick-and-place order: open, pick, close, lift, place, open, home")
+        if log != expect:
+            print("    got:", log)
+
         arm.go_home()
         fb = None
         for _ in range(10):

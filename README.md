@@ -12,6 +12,11 @@ Open-source robot arms are expensive, mostly because of their motors and electro
 here was a 6-DOF arm built from 3D-printed parts, hobby servos and an ESP32, as cheap as possible,
 that could **pick an object up and place it somewhere else**.
 
+The planned pipeline, started with one button:
+1. The phone camera looks at the chessboard and finds which square the object is on.
+2. The arm moves to that square and grips the object.
+3. It carries it to a small box next to the board and releases it.
+
 ## What worked
 - Built and tested on the physical arm (summer 2026). After many hours of calibration, the arm
   reached any chessboard square just by typing its name (e.g. `e4`) in the MATLAB app, using a
@@ -53,6 +58,7 @@ Full project history: [`docs/project-summary.md`](docs/project-summary.md)
 | S4 | 25 | Wrist | 36 |
 | S5 | 27 | Wrist | 34 |
 | S6 | 18 | Mirrors S2 (`180 - S2`) | none |
+| Gripper | 26 (check your wiring) | SG90-type geared gripper | none |
 
 Power the servos from an external supply and share ground with the ESP32.
 
@@ -93,9 +99,13 @@ tests/                    hardware-free tests (see Testing)
 | Direction | Line | Meaning |
 |---|---|---|
 | PC -> ESP32 | `s1,s2,s3,s4,s5` | Five joint angles 0-180 in MATLAB's frame (what `arm_control_app.m` sends) |
+| PC -> ESP32 | `s1,s2,s3,s4,s5,g` | Same, then set the gripper to `g` once the arm has arrived |
+| PC -> ESP32 | `OPEN` / `CLOSE` | Open / close the gripper (`GRIP OPEN`, `GRIP CLOSE` also work) |
+| PC -> ESP32 | `GRIP <0-180>` | Set the gripper to an angle (use it to find the open/closed values) |
 | PC -> ESP32 | `HOME` | Move to the home pose |
 | PC -> ESP32 | `CAL` | Print raw ADC values of FB1-FB5 |
 | ESP32 -> PC | `f1,f2,f3,f4,f5,f6` | Measured angles in the same frame, every 200 ms and after each move (f6 = commanded S6) |
+| ESP32 -> PC | `# GRIP <angle>` | Gripper position after every gripper command |
 | ESP32 -> PC | `# ...` | Status / errors |
 
 The firmware moves the joints wrist to base (S5, S4, S3, S2 with S6, then S1). If any joint
@@ -105,8 +115,11 @@ the jog buttons, go straight to the target.
 ## Running
 1. Flash `firmware/esp32_main` with PlatformIO (it pulls in `ESP32Servo`).
 2. MATLAB: `run matlab/setup_paths.m`, then `arm_control_app` (the COM port is set at the top of the file, currently COM9).
-3. Python instead of MATLAB: `python vision/robotic_arm_interface.py --port COM9 --angles 90 100 120 80 60` (needs `pyserial`).
-4. Vision: start IP Webcam on the phone, then
+3. Pick and place: pick a square in the app and press **Pick Square -> Box**
+   (`matlab/hardware/pick_and_place.m`: open, go to the square, close, lift, go to the box, open, home).
+   Set `boxPose` at the top of `arm_control_app.m` to the servo angles above your box first.
+4. Python instead of MATLAB: `python vision/robotic_arm_interface.py --port COM9 --angles 90 100 120 80 60` (needs `pyserial`).
+5. Vision: start IP Webcam on the phone, then
    `python vision/chessboardtracker.py --source http://<phone-ip>:8080/video --rotate 0`
    (`--source 0` uses a USB webcam, or pass a photo to try it without a camera).
 
@@ -114,11 +127,12 @@ the jog buttons, go straight to the target.
 
 | What | How to run | Last result |
 |---|---|---|
-| MATLAB: URDF + meshes, IK, chess squares, servo table, scripts run headless | `run_tests` in `tests/matlab` (several minutes) | 12/12 pass (IK on random reachable poses: 11/12 within 1 mm) |
+| MATLAB: URDF + meshes, IK, chess squares, servo table, scripts run headless | `run_tests` in `tests/matlab` (several minutes) | 15/15 pass (IK on random reachable poses: 11/12 within 1 mm) |
+| Pick-and-place sequence and the app's buttons, against a fake ESP32 | part of the MATLAB tests | pass |
 | IK reaches every chess square | part of the MATLAB tests | 64/64 at board level (worst 0.10 mm) and 30 mm above (worst 0.72 mm) |
-| Firmware logic on a PC (order, S3 inversion, S6 mirror, HOME-first, clamping, bad packets, feedback) | `cd tests/firmware_sim && g++ -std=gnu++17 -Istub test_firmware.cpp -o test_firmware && ./test_firmware` | 37/37 checks |
+| Firmware logic on a PC (order, S3 inversion, S6 mirror, HOME-first, clamping, bad packets, feedback) | `cd tests/firmware_sim && g++ -std=gnu++17 -Istub test_firmware.cpp -o test_firmware && ./test_firmware` | 47/47 checks (incl. gripper) |
 | Every packet MATLAB sends is accepted by the firmware | `export_packets` in MATLAB, then the firmware test above | 128/128 |
-| Python interface <-> simulated ESP32 over a virtual serial port (Linux/WSL) | `g++ -std=gnu++17 -Istub sim_main.cpp -o sim_firmware && python3 test_end_to_end.py ./sim_firmware` | pass |
+| Python interface <-> simulated ESP32 over a virtual serial port, incl. a full pick-and-place (Linux/WSL) | `g++ -std=gnu++17 -Istub sim_main.cpp -o sim_firmware && python3 test_end_to_end.py ./sim_firmware` | pass |
 | Camera calibration against the 14 photos | `python tests/vision/test_calibration.py` | 0.57 px mean reprojection error (9/14 boards detected) |
 
 Not covered without hardware: real servo motion and timing, real ADC feedback, and the
@@ -130,6 +144,11 @@ from the old code. For each servo: move it to 0 deg, send `CAL`, note its FB val
 180 deg; then put both numbers into the arrays and re-flash.
 
 ## Still open
+- Gripper: the pin (GPIO 26), `GRIPPER_OPEN`/`GRIPPER_CLOSED` in the firmware and `boxPose`
+  in the app are placeholders - check the wiring and measure them with `GRIP <angle>` and the jog buttons.
+- The camera step (find which square the object is on) isn't connected to pick-and-place yet;
+  the square is chosen by hand in the app.
+- The URDF gripper is one rigid part, so the simulation doesn't show the fingers opening.
 - Feedback calibration values (above) and the HOME pose (all 90 deg) are unverified.
 - S6 has no feedback channel.
 - `matlab/chess/CreateServoInterpolation.m`: square a8 isn't measured, and only files a-d

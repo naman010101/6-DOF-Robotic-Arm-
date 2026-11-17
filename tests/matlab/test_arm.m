@@ -142,6 +142,33 @@ tc.verifyTrue(all(isfinite(a)));
 tc.verifyTrue(any(isnan(str2double(split("# OK 1,2,3,4,5", ",")))), "status lines rejected");
 end
 
+% ---------------------------------------------------------------- gripper / pick and place
+function testPickAndPlaceSequence(tc)
+esp = FakeEsp32();
+evalc("pick_and_place(esp, [31 88 25 110 150], [150 70 60 120 90])");
+tc.verifyEqual(esp.Sent, ["OPEN" "31,88,25,110,150" "CLOSE" "HOME" "150,70,60,120,90" "OPEN" "HOME"], ...
+    "open, pick, close, lift, place, open, home");
+end
+
+function testPickAndPlaceStopsOnError(tc)
+esp = FakeEsp32();
+esp.FailOn = "CLOSE";
+tc.verifyError(@() pick_and_place(esp, [31 88 25 110 150], [150 70 60 120 90]), "pick_and_place:esp32");
+tc.verifyEqual(esp.Sent, ["OPEN" "31,88,25,110,150" "CLOSE"], "stops at the rejected step");
+end
+
+function testAppBuildsWithoutHardware(tc)
+before = findall(groot, "Type", "figure");
+evalc("arm_control_app()");   % no ESP32 on COM9 -> runs in offline mode
+figs = setdiff(findall(groot, "Type", "figure"), before);
+c = onCleanup(@() delete(figs));
+tc.verifyNotEmpty(figs, "app window created");
+texts = string(get(findall(figs, "Type", "uibutton"), "Text"));
+for t = ["Open Gripper" "Close Gripper" "Pick Square -> Box" "Load Square" "Solve IK"]
+    tc.verifyTrue(any(texts == t), "missing button: " + t);
+end
+end
+
 % ---------------------------------------------------------------- helpers
 function q = appSeed(robot)
 % same starting guess arm_control_app uses for its first solve

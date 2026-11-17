@@ -17,11 +17,20 @@ static int failures = 0, checks = 0;
 static int jointOfPin(int pin) { for (int i = 0; i < NUM_SERVOS; i++) if (SERVO_PINS[i] == pin) return i; return -1; }
 
 struct Write { int joint, angle; };
+// arm servo writes only (the gripper is reported separately)
 static std::vector<Write> writes() {
   std::vector<Write> w;
-  for (auto &e : sim::events) if (e[0] == 'W') { int p, a; sscanf(e.c_str(), "W %d %d", &p, &a); w.push_back({jointOfPin(p), a}); }
+  for (auto &e : sim::events) if (e[0] == 'W') { int p, a; sscanf(e.c_str(), "W %d %d", &p, &a); if (p != GRIPPER_PIN) w.push_back({jointOfPin(p), a}); }
   return w;
 }
+static std::vector<int> gripperWrites() {
+  std::vector<int> g;
+  for (auto &e : sim::events) if (e[0] == 'W') { int p, a; sscanf(e.c_str(), "W %d %d", &p, &a); if (p == GRIPPER_PIN) g.push_back(a); }
+  return g;
+}
+// index of the last arm write / first gripper write in the event list
+static int lastArmEvent() { int k = -1; for (size_t i = 0; i < sim::events.size(); i++) { int p, a; if (sscanf(sim::events[i].c_str(), "W %d %d", &p, &a) == 2 && p != GRIPPER_PIN) k = (int)i; } return k; }
+static int firstGripEvent() { for (size_t i = 0; i < sim::events.size(); i++) { int p, a; if (sscanf(sim::events[i].c_str(), "W %d %d", &p, &a) == 2 && p == GRIPPER_PIN) return (int)i; } return -1; }
 static std::vector<std::string> output() {
   std::vector<std::string> o;
   for (auto &e : sim::events) if (e[0] == 'O') o.push_back(e.substr(2));
@@ -43,7 +52,9 @@ int main() {
   printf("[1] startup puts every servo at HOME\n");
   {
     auto w = writes();
-    CHECK(w.size() == 6, "6 servo writes at startup");
+    CHECK(w.size() == 6, "6 arm servo writes at startup");
+    auto g = gripperWrites();
+    CHECK(g.size() == 1 && g[0] == GRIPPER_OPEN, "gripper starts open");
     for (auto &x : w) CHECK(x.angle == HOME_POSE[x.joint], "startup angle == HOME");
     CHECK(has(output(), "# ROBOT READY"), "ready message");
   }
@@ -117,6 +128,27 @@ int main() {
   {
     send("cal");
     CHECK(has(output(), "# RAW FB1="), "raw line");
+  }
+
+  printf("[10] gripper: OPEN / CLOSE / GRIP <angle> / clamping / 6-value packet\n");
+  {
+    send("CLOSE");
+    CHECK(gripperWrites() == std::vector<int>{GRIPPER_CLOSED}, "CLOSE -> closed angle");
+    CHECK(writes().empty(), "CLOSE does not move the arm");
+    CHECK(has(output(), "# GRIP " + std::to_string(GRIPPER_CLOSED)), "# GRIP status reported");
+    send("open");
+    CHECK(gripperWrites() == std::vector<int>{GRIPPER_OPEN}, "open (lower case) -> open angle");
+    send("GRIP 75");
+    CHECK(gripperWrites() == std::vector<int>{75}, "GRIP 75");
+    send("GRIP 300");
+    CHECK(gripperWrites() == std::vector<int>{180}, "GRIP clamped to 180");
+    send("GRIP OPEN");
+    send("100,95,85,90,92," + std::to_string(GRIPPER_CLOSED));
+    CHECK(gripperWrites() == std::vector<int>{GRIPPER_CLOSED}, "6th field closes the gripper");
+    CHECK(firstGripEvent() > lastArmEvent(), "gripper moves only after the arm has arrived");
+    CHECK(has(output(), "# OK 100,95,85,90,92"), "6-value packet accepted");
+    send("100,95,85,90,92");
+    CHECK(gripperWrites().empty(), "5-value packet leaves the gripper alone");
   }
 
   printf("[9] every packet from MATLAB's chess table is accepted (packets.txt, if present)\n");

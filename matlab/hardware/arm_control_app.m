@@ -27,6 +27,11 @@ Squares = CreateChessBoard();
 
 ServoInterp = CreateServoInterpolation();
 
+%% ---------------- Pick and Place ----------------
+% Servo angles S1..S5 of the drop-off pose (the box next to the board).
+% PLACEHOLDER - jog the arm over the box, note the angles, and put them here.
+boxPose = [150 70 60 120 90];
+
 
 %% ---------------- DLS IK Parameters ----------------
 
@@ -120,6 +125,26 @@ servo2Label = uilabel(fig,'Position',[800 270 200 22],'Text','S2 : 90');
 servo3Label = uilabel(fig,'Position',[800 240 200 22],'Text','S3 : 90');
 servo4Label = uilabel(fig,'Position',[800 210 200 22],'Text','S4 : 90');
 servo5Label = uilabel(fig,'Position',[800 180 200 22],'Text','S5 : 90');
+
+%% ---------------- Gripper / Pick and Place ----------------
+
+uibutton(fig,...
+    'Text','Open Gripper',...
+    'Position',[1020 300 150 32],...
+    'ButtonPushedFcn',@(~,~) gripperCommand("OPEN"));
+
+uibutton(fig,...
+    'Text','Close Gripper',...
+    'Position',[1020 260 150 32],...
+    'ButtonPushedFcn',@(~,~) gripperCommand("CLOSE"));
+
+uibutton(fig,...
+    'Text','Pick Square -> Box',...
+    'Position',[1020 210 150 40],...
+    'FontWeight','bold',...
+    'ButtonPushedFcn',@pickToBox);
+
+gripperLabel = uilabel(fig,'Position',[1020 180 150 22],'Text','Gripper : open');
 
 %% ---------------- Solve Button ----------------
 
@@ -339,50 +364,91 @@ uibutton(fig,...
        
     end
 
-    function loadSquare(~,~)
-
-        square = squareDrop.Value;
+    function S = squareServoAngles(square)
 
         % convert chess notation to numbers
         file = double(square(1)) - double('a') + 1;
         rank = str2double(square(2));
 
         % interpolate servo angles
-        S1 = round(ServoInterp.S1(file,rank));
-        S2 = round(ServoInterp.S2(file,rank));
-        S3 = round(ServoInterp.S3(file,rank));
-        S4 = round(ServoInterp.S4(file,rank));
-        S5 = round(ServoInterp.S5(file,rank));
+        S = round([ServoInterp.S1(file,rank) ServoInterp.S2(file,rank) ...
+            ServoInterp.S3(file,rank) ServoInterp.S4(file,rank) ServoInterp.S5(file,rank)]);
 
         % Only files a-d are measured; e-h are extrapolated and can fall outside
         % the servo range, so clamp before sending.
-        S = max(0,min(180,[S1 S2 S3 S4 S5]));
-        if file > 4 || any(S ~= [S1 S2 S3 S4 S5])
+        Sc = max(0,min(180,S));
+        if file > 4 || any(Sc ~= S)
             warning("Square %s is outside the measured table (files a-d); angles are extrapolated.",square);
         end
-        S1 = S(1); S2 = S(2); S3 = S(3); S4 = S(4); S5 = S(5);
+        S = Sc;
+
+    end
+
+    function showServoAngles(S)
+
+        servo1Label.Text = sprintf("S1 : %d°",S(1));
+        servo2Label.Text = sprintf("S2 : %d°",S(2));
+        servo3Label.Text = sprintf("S3 : %d°",S(3));
+        servo4Label.Text = sprintf("S4 : %d°",S(4));
+        servo5Label.Text = sprintf("S5 : %d°",S(5));
+
+    end
+
+    function loadSquare(~,~)
+
+        square = squareDrop.Value;
+        S = squareServoAngles(square);
 
         fprintf("\n%s\n",square);
-        fprintf("S1=%d S2=%d S3=%d S4=%d S5=%d\n",...
-            S1,S2,S3,S4,S5);
-
-        % Update labels
-        servo1Label.Text = sprintf("S1 : %d°",S1);
-        servo2Label.Text = sprintf("S2 : %d°",S2);
-        servo3Label.Text = sprintf("S3 : %d°",S3);
-        servo4Label.Text = sprintf("S4 : %d°",S4);
-        servo5Label.Text = sprintf("S5 : %d°",S5);
+        fprintf("S1=%d S2=%d S3=%d S4=%d S5=%d\n",S);
+        showServoAngles(S);
 
         % Send to ESP32
         if ~isempty(esp)
 
-            msg = sprintf("%d,%d,%d,%d,%d\n",...
-                S1,S2,S3,S4,S5);
+            msg = sprintf("%d,%d,%d,%d,%d",S);
 
             writeline(esp,msg);
 
-            fprintf("Sent : %s",msg);
+            fprintf("Sent : %s\n",msg);
 
+        end
+
+    end
+
+    function gripperCommand(cmd)
+
+        if isempty(esp)
+            statusLabel.Text = "ESP32 not connected";
+            return
+        end
+
+        writeline(esp,cmd);
+        gripperLabel.Text = "Gripper : " + lower(cmd);
+        fprintf("Sent : %s\n",cmd);
+
+    end
+
+    function pickToBox(~,~)
+
+        square = squareDrop.Value;
+        S = squareServoAngles(square);
+        showServoAngles(S);
+
+        if isempty(esp)
+            statusLabel.Text = "ESP32 not connected";
+            return
+        end
+
+        statusLabel.Text = sprintf("Picking %s -> box ...",square);
+        drawnow;
+
+        try
+            pick_and_place(esp,S,boxPose);
+            statusLabel.Text = sprintf("Moved %s to the box",square);
+            gripperLabel.Text = "Gripper : open";
+        catch err
+            statusLabel.Text = "Pick and place failed: " + err.message;
         end
 
     end

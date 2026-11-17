@@ -5,6 +5,9 @@
  *   PC -> ESP32
  *     s1,s2,s3,s4,s5   Five joint angles (0-180) in MATLAB's frame, exactly what
  *                      matlab/hardware/arm_control_app.m sends.
+ *     s1,s2,s3,s4,s5,g Same, plus a gripper angle applied after the arm has moved.
+ *     OPEN / CLOSE     Open or close the gripper (also GRIP OPEN, GRIP CLOSE).
+ *     GRIP <0-180>     Set the gripper servo to an angle.
  *     HOME             Move to HOME_POSE.
  *     CAL              Print the raw ADC value of every feedback channel (for calibration).
  *   ESP32 -> PC
@@ -12,6 +15,7 @@
  *                        FEEDBACK_PERIOD_MS and after every move. Joint 6 has no feedback
  *                        wire, so its commanded angle is reported.
  *                        matlab/hardware/moving_physical_arm.m reads these lines.
+ *     # GRIP <angle>     Gripper position after every gripper command.
  *     # ...              Status messages. They start with '#', so parsers can skip them.
  *
  * Note: GPIO 12 is an ESP32 boot-strapping pin. If the board fails to boot with the
@@ -27,6 +31,10 @@ const int NUM_FEEDBACK = 5;
 
 // S1 base, S2 shoulder, S3 elbow, S4 wrist, S5 wrist, S6 mirrors S2
 const int SERVO_PINS[NUM_SERVOS] = {13, 12, 14, 25, 27, 18};
+
+// Gripper servo (SG90-type, geared gripper). Not one of the six arm servos: S6 mirrors S2.
+// GPIO 26 is a free, boot-safe PWM pin - CHECK that it matches your wiring.
+const int GRIPPER_PIN = 26;
 
 // Analog feedback for S1..S5 (all ADC1 pins)
 const int FEEDBACK_PINS[NUM_FEEDBACK] = {33, 32, 35, 36, 34};
@@ -49,12 +57,19 @@ const int HOME_POSE[NUM_SERVOS] = {90, 90, 90, 90, 90, 90};
 // Small moves, such as the jog buttons in the MATLAB app, go straight to the target.
 const int HOME_FIRST_THRESHOLD_DEG = 30;
 
+// Gripper angles - PLACEHOLDERS: find the real open/closed angles with "GRIP <angle>".
+const int GRIPPER_OPEN = 40;
+const int GRIPPER_CLOSED = 110;
+const int GRIPPER_SETTLE_MS = 400;  // time for the fingers to finish moving
+
 const int JOINT_DELAY_MS = 100;  // pause between joints (wrist -> base order)
 const int SETTLE_MS = 500;       // pause after a move before reading feedback
 const unsigned long FEEDBACK_PERIOD_MS = 200;
 
 // ===================== State =====================
 Servo servos[NUM_SERVOS];
+Servo gripper;
+int gripperAngle = GRIPPER_OPEN;
 int current[NUM_SERVOS];  // last angle written to each servo (replaces prev1..prev6)
 unsigned long lastFeedback = 0;
 
@@ -115,6 +130,19 @@ int largestJointChange(const int target[NUM_SERVOS])
   for (int i = 0; i < NUM_SERVOS; i++)
     largest = max(largest, abs(target[i] - current[i]));
   return largest;
+}
+
+// ---------- Gripper ----------
+void setGripper(int angle)
+{
+  angle = constrain(angle, 0, 180);
+  if (angle != gripperAngle)
+  {
+    gripper.write(angle);
+    gripperAngle = angle;
+    delay(GRIPPER_SETTLE_MS);
+  }
+  Serial.printf("# GRIP %d\n", gripperAngle);
 }
 
 // ---------- Feedback ----------
@@ -178,10 +206,30 @@ void handleLine(String msg)
     return;
   }
 
-  int s[5];
-  if (sscanf(msg.c_str(), "%d,%d,%d,%d,%d", &s[0], &s[1], &s[2], &s[3], &s[4]) != 5)
+  if (cmd == "OPEN" || cmd == "GRIP OPEN")
   {
-    Serial.print("# ERR expected s1,s2,s3,s4,s5 but got: ");
+    setGripper(GRIPPER_OPEN);
+    return;
+  }
+
+  if (cmd == "CLOSE" || cmd == "GRIP CLOSE")
+  {
+    setGripper(GRIPPER_CLOSED);
+    return;
+  }
+
+  int g = -1;
+  if (sscanf(cmd.c_str(), "GRIP %d", &g) == 1)
+  {
+    setGripper(g);
+    return;
+  }
+
+  int s[5];
+  int n = sscanf(msg.c_str(), "%d,%d,%d,%d,%d,%d", &s[0], &s[1], &s[2], &s[3], &s[4], &g);
+  if (n != 5 && n != 6)
+  {
+    Serial.print("# ERR expected s1,s2,s3,s4,s5[,g] but got: ");
     Serial.println(msg);
     return;
   }
@@ -195,6 +243,8 @@ void handleLine(String msg)
   moveRobot(target);
 
   Serial.printf("# OK %d,%d,%d,%d,%d\n", s[0], s[1], s[2], s[3], s[4]);
+  if (n == 6)
+    setGripper(g);  // after the arm has arrived, so it grips/releases in place
   sendFeedback();
 }
 
@@ -217,8 +267,12 @@ void setup()
     current[i] = HOME_POSE[i];
   }
 
+  gripper.setPeriodHertz(50);
+  gripper.attach(GRIPPER_PIN, 500, 2400);
+  gripper.write(GRIPPER_OPEN);
+
   delay(SETTLE_MS);
-  Serial.println("# ROBOT READY - send s1,s2,s3,s4,s5 | HOME | CAL");
+  Serial.println("# ROBOT READY - send s1,s2,s3,s4,s5[,g] | HOME | OPEN | CLOSE | GRIP <a> | CAL");
 }
 
 void loop()
